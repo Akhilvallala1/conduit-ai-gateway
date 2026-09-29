@@ -20,7 +20,7 @@ from pydantic import BaseModel
 
 from conduit.contracts import Complexity
 from conduit.gateway.errors import UnauthorizedError
-from conduit.gateway.settings import ApiKeySettings, GatewaySettings
+from conduit.gateway.settings import ApiKeySettings, ConsoleScope, GatewaySettings
 
 # The router already has a non-reversible key id for logging. Reusing it means
 # a key fingerprint in a gateway log line and one in a budget log line are the
@@ -48,6 +48,11 @@ class Principal(BaseModel):
     daily_budget_usd: float | None = None
     max_tier: Complexity = Complexity.COMPLEX
 
+    #: Operator-console grant, carried from the key's row. The console router
+    #: reads it; nothing on the completion path does.
+    console_scope: ConsoleScope = ConsoleScope.NONE
+    console_all_teams: bool = False
+
     @property
     def fingerprint(self) -> str:
         """Short, stable, non-reversible id. Log this, never `api_key`."""
@@ -57,11 +62,18 @@ class Principal(BaseModel):
 #: The caller used when `require_auth: false`. Unmetered by construction: the
 #: router treats an empty key as "no budget accounting" and the rate limiter
 #: buckets every anonymous caller together.
+#: `require_auth: false` means the whole gateway is open — completions and the
+#: already-unauthenticated `/metrics` included — so withholding the console's
+#: read panels would protect nothing while breaking the zero-key demo. Reveal is
+#: withheld anyway: an open gateway is a local convenience, and returning a
+#: human's prompt text to an unauthenticated caller is not one.
 ANONYMOUS = Principal(
     api_key="",
     team="anonymous",
     rate_limit_per_minute=60,
     max_tier=Complexity.COMPLEX,
+    console_scope=ConsoleScope.READ,
+    console_all_teams=True,
 )
 
 
@@ -103,6 +115,8 @@ class ApiKeyDirectory:
             rate_limit_per_minute=entry.rate_limit_per_minute or default_rpm,
             daily_budget_usd=entry.daily_budget_usd,
             max_tier=entry.max_tier,
+            console_scope=entry.console_scope,
+            console_all_teams=entry.console_all_teams,
         )
 
     @property

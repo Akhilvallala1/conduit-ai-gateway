@@ -36,6 +36,7 @@ from conduit.telemetry import build_recorder, create_metrics_router
 from conduit.telemetry.recorder import Recorder
 
 from .auth import ApiKeyDirectory
+from .console import create_console_router
 from .errors import install_error_handlers
 from .pipeline import Pipeline
 from .ratelimit import RateLimiter
@@ -188,6 +189,20 @@ def create_app(
     )
     # Telemetry owns the read side of its own data (`/metrics`, `/dashboard`).
     app.include_router(create_metrics_router(recorder.store))
+    # The operator console reads the same store, but auth-gated and team-scoped:
+    # `/metrics` sums the whole gateway for anyone who can reach the port, which
+    # is defensible for a scrape target inside a network policy and is not
+    # defensible for a browser surface that also renders prompts.
+    app.include_router(
+        create_console_router(
+            pipeline=pipeline,
+            directory=directory,
+            registry=registry,
+            router=router,
+            store=recorder.store,
+            config_dir=config_dir,
+        )
+    )
 
     # Held for tests and for anything that needs to reach past the HTTP surface.
     app.state.pipeline = pipeline

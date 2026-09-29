@@ -425,6 +425,29 @@ def test_an_exhausted_chain_is_a_502_without_provider_internals(tmp_path: Path) 
     assert "Traceback" not in res.text
 
 
+def test_an_exhausted_chain_records_every_model_it_tried(tmp_path: Path) -> None:
+    """The row for a total outage must still name the hops.
+
+    `RequestTrace.fallback_from` is normally filled from a successful
+    response's own list, so before this was wired the one request with no
+    successful response — every model down — was also the one request whose row
+    claimed no failover had been attempted. The models are Conduit's own ids
+    from `models.yaml`, so recording them leaks nothing the 502 does not
+    already name.
+    """
+    config = make_config()
+    registry = scripted_only(config, ScriptedProvider(fail_times=99, models=(ECHO, SECONDARY)))
+    app = build_app(tmp_path, config=config, registry=registry)
+    with TestClient(app) as client:
+        res = client.post("/v1/complete", json=native_body(), headers=AUTH)
+        written = rows(app)
+
+    assert res.status_code == 502
+    assert len(written) == 1
+    assert written[0].status == "error"
+    assert written[0].fallback_from == [ECHO, SECONDARY]
+
+
 # -- the four packages actually meeting ------------------------------------- #
 
 

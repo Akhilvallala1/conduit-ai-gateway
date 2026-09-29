@@ -94,8 +94,22 @@ def make_record(
     latency_ms: int = 100,
     status: RecordStatus = "ok",
     minutes_ago: float = 0.0,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+    provider_latency_ms: int | None = None,
+    guard_categories: Sequence[str] = (),
+    fallback_from: Sequence[str] = (),
+    error: str | None = None,
+    prompt_text: str | None = None,
+    completion_text: str | None = None,
 ) -> TelemetryRecord:
-    """A row seeded straight into the store, bypassing the recorder."""
+    """A row seeded straight into the store, bypassing the recorder.
+
+    The verdict, failover and text columns are settable because the console's
+    read surface projects them, and a row built through the recorder cannot
+    reach every shape of them — a blocked request never gets a provider
+    latency, an exhausted chain never gets a winning model.
+    """
     return TelemetryRecord(
         record_id=f"rec-{index:04d}",
         trace_id=trace_id or f"trace-{index:04d}",
@@ -107,9 +121,17 @@ def make_record(
         model=model,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
+        cache_read_tokens=cache_read_tokens,
+        cache_write_tokens=cache_write_tokens,
         cost_usd=cost_usd,
         latency_ms=latency_ms,
+        provider_latency_ms=provider_latency_ms,
+        guard_categories=list(guard_categories),
+        fallback_from=list(fallback_from),
         status=status,
+        error=error,
+        prompt_text=prompt_text,
+        completion_text=completion_text,
     )
 
 

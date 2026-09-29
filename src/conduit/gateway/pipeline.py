@@ -49,7 +49,7 @@ from conduit.gateway.auth import Principal
 from conduit.gateway.errors import GuardRejectedError
 from conduit.guards import GuardChain, rehydrate
 from conduit.providers.base import TIER_METADATA_KEY
-from conduit.providers.failover import FailoverChain
+from conduit.providers.failover import AllProvidersFailedError, FailoverChain
 from conduit.router.policy import TIER_LADDER, PolicyError
 from conduit.router.service import Router, RouteResult
 from conduit.telemetry.recorder import Recorder, RequestTrace
@@ -220,6 +220,29 @@ class Pipeline:
     def recorder(self) -> Recorder:
         return self._recorder
 
+    @property
+    def guards(self) -> GuardChain:
+        """The same chain the request path uses.
+
+        The console re-runs it over stored text to redact a reveal, so it has to
+        be this chain and not a freshly built one: a gateway configured with a
+        narrower guard set must not get a wider redaction in its console, nor a
+        narrower one.
+        """
+        return self._guards
+
+    @property
+    def failover(self) -> FailoverChain:
+        """The chain, and through it the registry and the circuit breakers.
+
+        The console's provider panel needs breaker state, and the breakers are
+        created inside `create_app` and handed here. Exposing them through the
+        pipeline keeps that single instance authoritative — a second
+        `CircuitBreakers` would report a healthy system while the one on the
+        request path had every provider open.
+        """
+        return self._failover
+
     async def complete(self, req: CompletionRequest, principal: Principal) -> PipelineOutcome:
         """Run the fixed pipeline. Exactly one telemetry row, whatever happens."""
         attributed = self._attribute(req, principal)
@@ -370,7 +393,18 @@ class Pipeline:
             trace.set_attempt(provider=primary.name, model=route.primary)
         except LookupError:
             trace.set_attempt(provider="unknown", model=route.primary)
-        response = await self._failover.complete(req, route.chain, route.tier)
+        try:
+            response = await self._failover.complete(req, route.chain, route.tier)
+        except AllProvidersFailedError as exc:
+            # The trace learns `fallback_from` from a *successful* response, so
+            # a chain that never produced one recorded no hops at all — the row
+            # for a total upstream outage was the one row with no failover
+            # story on it, which is precisely backwards. The chain knows what it
+            # tried; `record_failover` has existed for this since #7 and was
+            # simply never wired up here.
+            for attempted in exc.attempted:
+                trace.record_failover(attempted)
+            raise
         trace.set_response(response)
         return response
 
