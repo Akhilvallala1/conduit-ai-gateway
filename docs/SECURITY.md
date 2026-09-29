@@ -210,7 +210,7 @@ gcloud iam workload-identity-pools providers create-oidc github-actions \
   --location=global --workload-identity-pool=github \
   --issuer-uri=https://token.actions.githubusercontent.com \
   --attribute-mapping='google.subject=assertion.sub,attribute.repository=assertion.repository' \
-  --attribute-condition='assertion.repository == "Akhilvallala1/palo-alto-networks"'
+  --attribute-condition='assertion.repository == "Akhilvallala1/conduit-ai-gateway"'
 ```
 
 Then set the repository secrets `GCP_PROJECT_ID`, `GCP_WIF_PROVIDER`,
