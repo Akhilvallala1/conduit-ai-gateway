@@ -27,8 +27,10 @@ from conduit.router.cost import BudgetExceededError
 
 __all__ = [
     "BadRequestError",
+    "ForbiddenError",
     "GatewayError",
     "GuardRejectedError",
+    "NotFoundError",
     "RateLimitExceededError",
     "StreamingUnsupportedError",
     "UnauthorizedError",
@@ -171,6 +173,37 @@ class BadRequestError(GatewayError):
     error_type = "invalid_request_error"
 
     def __init__(self, message: str, *, code: str = "invalid_request") -> None:
+        super().__init__(message, code=code)
+
+
+class ForbiddenError(GatewayError):
+    """Authenticated, but this key does not hold the grant the route needs.
+
+    Distinct from 401 on purpose: a 401 tells a caller to present a key, and a
+    caller who already presented a valid one would retry forever on it. The
+    message names the grant rather than the resource, so a refusal never
+    confirms that the thing asked for exists.
+    """
+
+    status_code = 403
+    error_type = "invalid_request_error"
+
+    def __init__(self, message: str, *, code: str = "insufficient_scope") -> None:
+        super().__init__(message, code=code)
+
+
+class NotFoundError(GatewayError):
+    """No such resource — or none this caller is allowed to know about.
+
+    Rows outside the caller's team are reported as absent rather than
+    forbidden. A 403 here would be an existence oracle: it would let one team
+    confirm another team's trace ids by the status code alone.
+    """
+
+    status_code = 404
+    error_type = "invalid_request_error"
+
+    def __init__(self, message: str, *, code: str = "not_found") -> None:
         super().__init__(message, code=code)
 
 

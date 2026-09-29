@@ -5,6 +5,14 @@
 # overrides `routing.yaml`'s `budgets.default_daily_usd` for this key alone, and
 # `max_tier` is the ceiling the router is allowed to route it to.
 #
+# `console_scope` is the operator-console grant, and it defaults to `none`: the
+# console reads across teams, so a key that may call /v1/chat/completions is not
+# thereby allowed to read everyone's traffic. `read` opens the panels;
+# `reveal` additionally allows GET /api/console/traces/{id}?reveal=true, which
+# returns prompt text redacted at read time and writes an audit log line. There
+# is no setting that returns the unredacted original. `console_all_teams: true`
+# lifts the per-team filter and is the operator case.
+#
 # These are demo keys for the zero-key local path (mock + ollama). Override them
 # in a real deployment with the same env engine every other config file uses:
 #
@@ -22,6 +30,15 @@ api_keys:
     rate_limit_per_minute: 120
     daily_budget_usd: 1.00
     max_tier: trivial
+
+  # The operator key, so the console works on a zero-key checkout. `read` rather
+  # than `reveal` on purpose: this file is the one people copy into a real
+  # deployment, and the grant that can surface prompt text should be a decision
+  # someone made rather than a default they inherited.
+  - key: conduit-operator-key
+    team: ops
+    console_scope: read
+    console_all_teams: true
 
 # Applied to any key that does not set its own.
 rate_limit_per_minute: 60

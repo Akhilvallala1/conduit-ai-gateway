@@ -74,6 +74,12 @@ CREATE INDEX IF NOT EXISTS telemetry_slice ON telemetry (provider, team, tier);
 UNSLICED_KEY = "all"
 
 
+#: Columns a query may filter by with an equality test. `trace_id` is here but
+#: deliberately absent from `GROUPABLE_COLUMNS`: grouping by it would produce
+#: one bucket per request, which is a list, not an aggregate.
+_FILTER_COLUMNS = ("provider", "team", "tier", "model", "workflow", "status", "trace_id")
+
+
 class TelemetryQuery(BaseModel):
     """A time window plus equality filters, shared by every read path."""
 
@@ -85,7 +91,15 @@ class TelemetryQuery(BaseModel):
     model: str | None = None
     workflow: str | None = None
     status: str | None = None
+    #: One request. The SQLite index `telemetry_trace` already exists for it.
+    trace_id: str | None = None
     limit: int | None = Field(default=None, gt=0)
+
+    #: Row order for `records()`. Aggregates ignore it — they have their own
+    #: ORDER BY — but a console feed wants the newest rows, and `limit` is
+    #: applied by SQLite *after* the sort, so ascending order with a limit
+    #: would return the oldest N rows rather than the most recent ones.
+    newest_first: bool = False
 
     def sql_where(self) -> tuple[str, list[Any]]:
         """Render this query as a WHERE clause plus bound parameters."""
@@ -97,7 +111,7 @@ class TelemetryQuery(BaseModel):
         if self.until is not None:
             clauses.append("ts_epoch < ?")
             params.append(self.until.timestamp())
-        for column in ("provider", "team", "tier", "model", "workflow", "status"):
+        for column in _FILTER_COLUMNS:
             value = getattr(self, column)
             if value is not None:
                 clauses.append(f"{column} = ?")
@@ -209,7 +223,8 @@ class JsonlSqliteStore:
     def records(self, query: TelemetryQuery | None = None) -> list[TelemetryRecord]:
         query = query or TelemetryQuery()
         where, params = query.sql_where()
-        sql = f"SELECT * FROM telemetry{where} ORDER BY ts_epoch ASC"
+        order = "DESC" if query.newest_first else "ASC"
+        sql = f"SELECT * FROM telemetry{where} ORDER BY ts_epoch {order}"
         if query.limit is not None:
             sql += " LIMIT ?"
             params = [*params, query.limit]
